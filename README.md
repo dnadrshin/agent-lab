@@ -106,6 +106,21 @@ size and preview, `findings`, and the `flood` / `blocked` flags.
 command, `Edit`/`Write` with the path, `WebFetch` with the url), and file changes
 from the watcher. JSONL, easy to grep and to feed anywhere.
 
+### What ends up in those logs
+
+`traffic.jsonl` holds decrypted request and response content — that is the entire
+point of the proxy, and it makes the file as sensitive as anything the agent
+touched. Expect to find in it: `Authorization` headers with live tokens, API
+keys, session cookies, private repository contents, and whatever went into a
+prompt.
+
+`.gitignore` keeps `logs/*.jsonl` out of commits. It does not stop you from
+pasting an excerpt into an issue, a chat, or a talk slide. Scrub before sharing.
+
+Hosts listed in `MITM_QUIET_HOSTS` are the exception: their bodies are never
+written to disk and their headers are never scanned, because there the
+credentials are the agent's own by design.
+
 ## Knobs
 
 All via a `.env` next to `docker-compose.yml`, or inline.
@@ -113,7 +128,7 @@ All via a `.env` next to `docker-compose.yml`, or inline.
 | Variable | Default | Effect |
 |---|---|---|
 | `MITM_ALLOW_HOSTS` | empty | csv allowlist of domains; anything else → 403 + log entry. Empty = observation only |
-| `MITM_QUIET_HOSTS` | `api.anthropic.com,…` | bodies are not stored (otherwise the log drowns in the model's own traffic) |
+| `MITM_QUIET_HOSTS` | the agent's own endpoints | hosts treated as the agent's control plane: bodies are not stored and headers are not scanned. Bodies are still scanned, so a secret pasted into a prompt is still caught |
 | `MITM_FLOOD_N` / `MITM_FLOOD_WINDOW` | `30` / `10` | flood-detection threshold per domain |
 | `MITM_UI` | `dump` | `web` → mitmweb at `http://localhost:8082` (token in `docker compose logs proxy`) |
 | `FORWARD_OTHER` | `drop` | `masq` = allow non-HTTP egress (and stay blind to it) — for testing bypass scenarios |
@@ -174,3 +189,7 @@ Established by running `tools/probe.sh`, not derived on paper.
 ## Requirements
 
 Docker Desktop, and python3 on the host (only for `tools/correlate.py`).
+
+## License
+
+MIT — see [LICENSE](LICENSE).

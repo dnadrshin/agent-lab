@@ -8,7 +8,9 @@ Writes /logs/traffic.jsonl. Besides the requests themselves it detects:
 
 Environment:
   MITM_ALLOW_HOSTS   csv of allowed hosts (suffix match). Empty = allow everything.
-  MITM_QUIET_HOSTS   csv of hosts whose bodies are not stored (LLM endpoints by default).
+  MITM_QUIET_HOSTS   csv of hosts treated as the agent's own infrastructure: their
+                     bodies are not stored and their headers are not scanned for
+                     secrets (LLM endpoints by default). Bodies are still scanned.
   MITM_BODY_PREVIEW  how many body bytes to keep in the log (default 2048).
   MITM_FLOOD_N       request threshold per domain within the window (default 30).
   MITM_FLOOD_WINDOW  window in seconds (default 10).
@@ -36,7 +38,11 @@ def _csv(name: str, default: str = "") -> list:
 
 
 ALLOW_HOSTS = _csv("MITM_ALLOW_HOSTS")
-QUIET_HOSTS = _csv("MITM_QUIET_HOSTS", "api.anthropic.com,statsig.anthropic.com,sentry.io")
+QUIET_HOSTS = _csv(
+    "MITM_QUIET_HOSTS",
+    "api.anthropic.com,statsig.anthropic.com,mcp-proxy.anthropic.com,"
+    "platform.claude.com,downloads.claude.ai,sentry.io",
+)
 
 # What counts as a leak signal. Deliberately broad: the goal is to see, not to filter.
 SECRET_PATTERNS = [
@@ -160,9 +166,18 @@ class AgentTrafficLogger:
             self.flood_announced.discard(host)
 
         quiet = _match_host(host, QUIET_HOSTS)
-        body = b"" if quiet else (req.raw_content or b"")
-        headers_blob = "\n".join(f"{k}: {v}" for k, v in req.headers.items()).encode()
-        findings = _scan(headers_blob) + _scan(body) + _scan(req.pretty_url.encode())
+        body = req.raw_content or b""
+
+        # A quiet host is the agent's own infrastructure. Its Authorization header
+        # carries the agent's own credentials by design — scanning it buries every
+        # real finding under one anthropic_key/bearer_header/jwt hit per request.
+        # The body is still scanned: a secret pasted into a prompt is precisely
+        # the kind of leak worth catching, it just never gets stored verbatim.
+        groups = [_scan(body), _scan(req.pretty_url.encode())]
+        if not quiet:
+            headers_blob = "\n".join(f"{k}: {v}" for k, v in req.headers.items()).encode()
+            groups.append(_scan(headers_blob))
+        findings = [f for group in groups for f in group]
         # collapse duplicates by kind
         seen, uniq = set(), []
         for f in findings:

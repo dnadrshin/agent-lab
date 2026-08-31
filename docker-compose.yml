@@ -47,7 +47,9 @@ services:
       FORWARD_OTHER: ${FORWARD_OTHER:-drop}
       MITM_UI: ${MITM_UI:-dump}                 # dump | web (UI on localhost:8082)
       MITM_ALLOW_HOSTS: ${MITM_ALLOW_HOSTS:-}   # empty = allow everything, log only
-      MITM_QUIET_HOSTS: ${MITM_QUIET_HOSTS:-api.anthropic.com,statsig.anthropic.com,sentry.io}
+      # The agent's own control plane: bodies not stored, headers not scanned
+      # (its Authorization header is credentials by design, not a leak).
+      MITM_QUIET_HOSTS: ${MITM_QUIET_HOSTS:-api.anthropic.com,statsig.anthropic.com,mcp-proxy.anthropic.com,platform.claude.com,downloads.claude.ai,sentry.io}
       MITM_FLOOD_N: ${MITM_FLOOD_N:-30}
       MITM_FLOOD_WINDOW: ${MITM_FLOOD_WINDOW:-10}
       MITM_BODY_PREVIEW: ${MITM_BODY_PREVIEW:-2048}
