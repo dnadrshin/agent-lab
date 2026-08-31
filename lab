@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Single entry point into the lab.
+# Important: enter the container as an unprivileged user.
+# `docker compose exec agent …` lets you in as root, and root inside the
+# container can rewrite the route and slip past the proxy. This closes that.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+usage() {
+  cat <<'USAGE'
+Usage: ./lab <command>
+
+  up [--build]   bring the lab up
+  down           stop it (data and credentials are kept)
+  reset          stop and wipe the volumes (claude credentials too)
+  claude [args]  run the agent inside the sandbox
+  shell          shell in the agent container (as agent, not root)
+  root-shell     shell as root — bypasses the isolation, debugging only
+  watch          live timeline: agent steps × its network
+  timeline [..]  one-shot timeline (arguments are passed to correlate.py)
+  summary        outbound traffic aggregated by domain
+  alerts         leaks, floods and blocks only
+  probe          isolation self-test (10 ways out of the box)
+  proxy-log      raw mitmproxy stream
+  status         container state plus an interception check
+USAGE
+}
+
+as_agent() { docker compose exec -u agent agent "$@"; }
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  up)         docker compose up -d "$@" ;;
+  down)       docker compose down ;;
+  reset)      docker compose down -v ;;
+  claude)     as_agent claude "$@" ;;
+  shell)      as_agent bash -l ;;
+  root-shell) echo "WARNING: root inside the container bypasses traffic interception." >&2
+              docker compose exec -u root agent bash -l ;;
+  watch)      python3 tools/correlate.py -f "$@" ;;
+  timeline)   python3 tools/correlate.py "$@" ;;
+  summary)    python3 tools/correlate.py --summary "$@" ;;
+  alerts)     python3 tools/correlate.py --alerts "$@" ;;
+  probe)      as_agent bash -c "$(cat tools/probe.sh)" ;;
+  proxy-log)  docker compose logs -f proxy ;;
+  status)
+    docker compose ps
+    echo
+    echo "Interception (a request around the env proxy must land in the log as transparent):"
+    before=$(wc -l < logs/traffic.jsonl 2>/dev/null || echo 0)
+    as_agent curl -s --noproxy '*' --max-time 10 -o /dev/null http://example.com/ || true
+    sleep 1
+    if tail -n "+$((before + 1))" logs/traffic.jsonl 2>/dev/null | grep -q '"mode": "transparent"'; then
+      echo "  OK — the env-proxy bypass is visible"
+    else
+      echo "  BROKEN — the agent can reach the network without being logged"; exit 1
+    fi
+    echo
+    echo "Agent process privileges (expected uid=1001(agent)):"
+    as_agent id
+    ;;
+  ""|-h|--help|help) usage ;;
+  *)  echo "unknown command: $cmd" >&2; usage; exit 1 ;;
+esac

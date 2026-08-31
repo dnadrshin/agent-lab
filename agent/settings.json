@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "/opt/agent-lab/hooks/log_tool.py" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "/opt/agent-lab/hooks/log_tool.py" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "/opt/agent-lab/hooks/log_tool.py" }] }
+    ],
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "/opt/agent-lab/hooks/log_tool.py" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "/opt/agent-lab/hooks/log_tool.py" }] }
+    ]
+  }
+}

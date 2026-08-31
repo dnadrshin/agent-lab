@@ -1,0 +1,4 @@
+logs/*.jsonl
+workspace/*
+!workspace/.gitkeep
+.env
