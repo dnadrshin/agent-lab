@@ -71,7 +71,8 @@ wipes them).
 ## What to look at
 
 ```bash
-./lab watch             # live timeline: agent step → its requests
+./lab viewer            # browser view on http://127.0.0.1:8083
+./lab watch             # the same timeline in the terminal
 ./lab timeline --since 15m -v
 ./lab summary           # by domain: how many requests, how many bytes left
 ./lab alerts            # leaks, floods and blocks only
@@ -96,6 +97,27 @@ Sample timeline output:
 That stitching of "step × network" is what neither HTTP debuggers (they see only
 traffic) nor MCP gateways (they see only MCP calls, not `curl`, not a push to a
 remote, not the agent's browser) give you.
+
+### The viewer
+
+`./lab viewer` serves a single page that shows the same correlation live: agent
+steps as headers, the requests that followed each one indented underneath, and
+an activity strip along the top where a burst against one domain is a visible
+spike. Clicking a request opens its detail — how it left (via the env proxy or
+around it), how much was sent, what was flagged, and the stored body preview.
+
+Three controls carry most of the value:
+
+- **hide agent infra** (on by default) drops the agent's own control-plane
+  chatter — the hosts the proxy has in `MITM_QUIET_HOSTS`. Without it, heartbeat
+  and presence traffic buries everything the agent did to the outside world. The
+  list comes from the proxy itself, so it always matches the running config.
+- **flagged only** leaves just leaks, floods and blocks.
+- **filter** matches on host, path, and the command of the step.
+
+The server binds `127.0.0.1` and only reads the logs. That is deliberate: the
+records hold decrypted bodies and live credentials, so nothing here should be
+reachable from another machine.
 
 ### Logs
 

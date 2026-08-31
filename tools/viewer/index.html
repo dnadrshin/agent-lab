@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-lab viewer</title>
+<style>
+:root {
+  --bg: #fbfbfa; --panel: #fff; --line: #e4e2dd; --ink: #1c1b19; --mute: #79746c;
+  --accent: #2f6f4f; --warn: #9a6b12; --danger: #a33127; --net: #35618f;
+  --chip: #f0efec; --shadow: 0 1px 2px rgba(0,0,0,.06);
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --panel: #1e1e1d; --line: #333230; --ink: #eceae5; --mute: #99938a;
+    --accent: #6fbf92; --warn: #d9a84a; --danger: #e8776a; --net: #7aa9dd;
+    --chip: #2a2a28; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header {
+  position: sticky; top: 0; z-index: 10; background: var(--panel);
+  border-bottom: 1px solid var(--line); padding: 10px 16px; box-shadow: var(--shadow);
+}
+.row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+h1 { font-size: 14px; margin: 0; font-weight: 600; letter-spacing: -.01em; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.dot.stale { background: var(--mute); }
+.stats { display: flex; gap: 14px; color: var(--mute); font-variant-numeric: tabular-nums; }
+.stats b { color: var(--ink); font-weight: 600; }
+.stats .bad b { color: var(--danger); }
+.spacer { flex: 1; }
+label.ctl { display: flex; gap: 5px; align-items: center; color: var(--mute); cursor: pointer; }
+select, input[type=search] {
+  font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px;
+}
+input[type=search] { width: 190px; }
+button {
+  font: inherit; color: var(--ink); background: var(--bg); cursor: pointer;
+  border: 1px solid var(--line); border-radius: 5px; padding: 3px 9px;
+}
+button[aria-pressed=true] { background: var(--chip); border-color: var(--mute); }
+
+#strip { width: 100%; height: 46px; display: block; margin-top: 9px; }
+#strip rect { shape-rendering: crispEdges; }
+
+main { padding: 14px 16px 40vh; max-width: 1180px; }
+.group { margin: 0 0 4px; }
+.step {
+  display: flex; gap: 9px; align-items: baseline; padding: 6px 8px;
+  border-radius: 6px; margin-top: 10px;
+}
+.step.task { background: var(--chip); }
+.time { color: var(--mute); font-family: var(--mono); font-size: 11px; flex: none; }
+.kind { flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--mute); }
+.what { font-family: var(--mono); word-break: break-word; }
+.step.task .what { font-family: inherit; font-weight: 600; }
+.step.bash .what { color: var(--ink); }
+.step.git .what { color: var(--net); }
+.step.file .what { color: var(--warn); }
+.blocked { color: var(--danger); font-weight: 600; }
+
+.reqs { margin: 2px 0 0 18px; border-left: 1px solid var(--line); }
+.req {
+  display: flex; gap: 9px; align-items: baseline; padding: 2px 8px;
+  cursor: pointer; border-radius: 0 5px 5px 0;
+}
+.req:hover { background: var(--chip); }
+.req .m { flex: none; width: 46px; color: var(--mute); font-family: var(--mono); font-size: 11px; }
+.req .host { font-family: var(--mono); color: var(--net); }
+.req .path { font-family: var(--mono); color: var(--mute); overflow: hidden;
+             text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+.bar { flex: none; height: 4px; border-radius: 2px; background: var(--net); opacity: .5; align-self: center; }
+.tag {
+  flex: none; font-size: 10px; padding: 1px 5px; border-radius: 3px;
+  border: 1px solid currentColor; text-transform: uppercase; letter-spacing: .03em;
+}
+.tag.leak { color: var(--danger); }
+.tag.flood { color: var(--danger); }
+.tag.bypass { color: var(--warn); }
+.tag.blocked { color: var(--warn); }
+.alert {
+  margin: 3px 0 3px 18px; padding: 4px 10px; border-left: 2px solid var(--danger);
+  color: var(--danger); font-weight: 600;
+}
+.empty { color: var(--mute); padding: 40px 0; text-align: center; }
+
+aside {
+  position: fixed; top: 0; right: 0; width: min(520px, 92vw); height: 100%;
+  background: var(--panel); border-left: 1px solid var(--line);
+  padding: 16px; overflow: auto; transform: translateX(100%);
+  transition: transform .14s ease; z-index: 20;
+}
+aside[open] { transform: none; }
+aside h2 { font-size: 13px; margin: 0 0 10px; }
+aside dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0 0 14px; }
+aside dt { color: var(--mute); }
+aside dd { margin: 0; font-family: var(--mono); word-break: break-all; }
+aside pre {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 10px; overflow: auto; max-height: 40vh; font-family: var(--mono); font-size: 11px;
+}
+.close { position: absolute; top: 12px; right: 14px; }
+.note { color: var(--mute); font-size: 11px; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="row">
+    <span class="dot" id="live"></span>
+    <h1>agent-lab</h1>
+    <div class="stats">
+      <span><b id="s-steps">0</b> steps</span>
+      <span><b id="s-reqs">0</b> requests</span>
+      <span><b id="s-bytes">0</b> sent</span>
+      <span class="bad"><b id="s-alerts">0</b> flagged</span>
+      <span><b id="s-hosts">0</b> domains</span>
+    </div>
+    <span class="spacer"></span>
+    <select id="window" title="time window">
+      <option value="300">last 5 min</option>
+      <option value="900">last 15 min</option>
+      <option value="3600" selected>last hour</option>
+      <option value="86400">last day</option>
+      <option value="0">everything</option>
+    </select>
+    <input type="search" id="filter" placeholder="filter host, path, command">
+    <button id="hide-infra" aria-pressed="true" title="hide the agent's own control plane (the hosts in MITM_QUIET_HOSTS)">hide agent infra</button>
+    <button id="only-alerts" aria-pressed="false">flagged only</button>
+    <button id="pause" aria-pressed="false">pause</button>
+  </div>
+  <svg id="strip" preserveAspectRatio="none"></svg>
+</header>
+
+<main id="timeline"><div class="empty">waiting for the first records…</div></main>
+
+<aside id="drawer">
+  <button class="close" onclick="closeDrawer()">close</button>
+  <h2 id="d-title">request</h2>
+  <dl id="d-meta"></dl>
+  <div id="d-body"></div>
+</aside>
+
+<script>
+const state = {
+  events: [],          // every record we have, sorted by ts
+  cursor: -1,
+  paused: false,
+  windowSec: 3600,
+  filter: "",
+  alertsOnly: false,
+  hideInfra: true,
+  lastPoll: 0,
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const hhmmss = ts => new Date(ts * 1000).toTimeString().slice(0, 8);
+const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB"
+              : n >= 1024 ? (n / 1024).toFixed(1) + " KB" : n + " B";
+
+/* ---------- data ---------- */
+
+async function poll() {
+  if (state.paused) return;
+  try {
+    const r = await fetch(`/api/events?after=${state.cursor}`);
+    const data = await r.json();
+    if (data.events.length) {
+      state.events.push(...data.events);
+      state.events.sort((a, b) => (a.ts - b.ts) || (a.seq - b.seq));
+      state.cursor = data.cursor;
+      render();
+    }
+    state.lastPoll = Date.now();
+    $("live").classList.remove("stale");
+  } catch {
+    $("live").classList.add("stale");
+  }
+}
+
+/* An event is a step (groups requests under it), a request, an alert, or noise. */
+function classify(e) {
+  if (e.src === "traffic") {
+    if (e.event === "request") return "request";
+    if (e.event === "alert") return "alert";
+    return null;                                   // responses, proxy_start, errors
+  }
+  if (e.event === "UserPromptSubmit") return "task";
+  if (e.event === "fs_change") return "file";
+  if (e.event === "PreToolUse") return "tool";
+  return null;                                     // PostToolUse, SessionStart, Stop
+}
+
+/* The hosts the proxy treats as the agent's own control plane. Taken from the
+   proxy_start record rather than hardcoded, so it always matches the running
+   configuration. */
+function quietHosts() {
+  for (let i = state.events.length - 1; i >= 0; i--) {
+    const e = state.events[i];
+    if (e.src === "traffic" && e.event === "proxy_start" && e.quiet_hosts) return e.quiet_hosts;
+  }
+  return [];
+}
+const matchHost = (host, list) =>
+  !!host && list.some(p => host === p || host.endsWith("." + p));
+
+function visible() {
+  const cutoff = state.windowSec ? Date.now() / 1000 - state.windowSec : 0;
+  const f = state.filter.toLowerCase();
+  const quiet = state.hideInfra ? quietHosts() : [];
+  return state.events.filter(e => {
+    if (e.ts < cutoff) return false;
+    const k = classify(e);
+    if (!k) return false;
+    if (quiet.length && (k === "request" || k === "alert") && matchHost(e.host, quiet)) return false;
+    if (state.alertsOnly && !(k === "alert" || e.findings || e.flood || e.blocked)) return false;
+    if (!f) return true;
+    return haystack(e).includes(f);
+  });
+}
+
+function haystack(e) {
+  const d = e.detail || {};
+  return [e.host, e.path, e.prompt, d.command, d.file_path, d.url, d.pattern, e.path]
+    .filter(Boolean).join(" ").toLowerCase();
+}
+
+/* ---------- rendering ---------- */
+
+function render() {
+  const evts = visible();
+  renderStats(evts);
+  renderStrip(evts);
+  renderTimeline(evts);
+}
+
+function renderStats(evts) {
+  let steps = 0, reqs = 0, bytes = 0, flagged = 0;
+  const hosts = new Set();
+  for (const e of evts) {
+    const k = classify(e);
+    if (k === "task" || k === "tool") steps++;
+    else if (k === "request") {
+      reqs++; bytes += e.req_body_len || 0; hosts.add(e.host);
+      if (e.findings || e.flood || e.blocked) flagged++;
+    } else if (k === "alert") flagged++;
+  }
+  $("s-steps").textContent = steps;
+  $("s-reqs").textContent = reqs;
+  $("s-bytes").textContent = kb(bytes);
+  $("s-alerts").textContent = flagged;
+  $("s-hosts").textContent = hosts.size;
+}
+
+/* Activity strip: one bar per time bucket. Height = request count, colour says
+   whether anything in that bucket was flagged. A flood is visible as a spike. */
+function renderStrip(evts) {
+  const svg = $("strip");
+  const reqs = evts.filter(e => classify(e) === "request");
+  svg.innerHTML = "";
+  if (!reqs.length) return;
+
+  const t0 = reqs[0].ts, t1 = reqs[reqs.length - 1].ts;
+  const span = Math.max(t1 - t0, 1);
+  const N = 220, buckets = new Array(N).fill(null).map(() => ({ n: 0, bad: 0, bypass: 0 }));
+  for (const r of reqs) {
+    const i = Math.min(N - 1, Math.floor((r.ts - t0) / span * N));
+    const b = buckets[i];
+    b.n++;
+    if (r.findings || r.flood || r.blocked) b.bad++;
+    if (r.mode === "transparent") b.bypass++;
+  }
+  const peak = Math.max(...buckets.map(b => b.n), 1);
+  const W = svg.clientWidth || 1000, H = 46, bw = W / N;
+
+  const parts = [];
+  buckets.forEach((b, i) => {
+    if (!b.n) return;
+    const h = Math.max(2, (b.n / peak) * (H - 12));
+    const fill = b.bad ? "var(--danger)" : b.bypass ? "var(--warn)" : "var(--net)";
+    parts.push(`<rect x="${(i * bw).toFixed(2)}" y="${H - h}" width="${Math.max(bw - .5, .8).toFixed(2)}" height="${h.toFixed(2)}" fill="${fill}" opacity="${b.bad ? .95 : .6}"><title>${b.n} requests</title></rect>`);
+  });
+  parts.push(`<text x="0" y="10" font-size="10" fill="var(--mute)">${hhmmss(t0)}</text>`);
+  parts.push(`<text x="${W}" y="10" font-size="10" fill="var(--mute)" text-anchor="end">${hhmmss(t1)} · peak ${peak}/bucket</text>`);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = parts.join("");
+}
+
+function renderTimeline(evts) {
+  const root = $("timeline");
+  if (!evts.length) {
+    root.innerHTML = `<div class="empty">nothing in this window</div>`;
+    return;
+  }
+  const out = [];
+  let open = false;
+  evts.forEach((e, idx) => {
+    const k = classify(e);
+    if (k === "task" || k === "tool" || k === "file") {
+      if (open) out.push("</div></div>");
+      out.push(`<div class="group">${stepHTML(e, k)}<div class="reqs">`);
+      open = true;
+    } else if (k === "request") {
+      if (!open) { out.push(`<div class="group"><div class="reqs">`); open = true; }
+      out.push(reqHTML(e, idx));
+    } else if (k === "alert") {
+      if (!open) { out.push(`<div class="group"><div class="reqs">`); open = true; }
+      out.push(`<div class="alert">⚑ ${esc(e.kind)} — ${esc(e.detail)}</div>`);
+    }
+  });
+  if (open) out.push("</div></div>");
+  root.innerHTML = out.join("");
+
+  root.querySelectorAll(".req").forEach(el => {
+    el.onclick = () => openDrawer(state.events.find(x => x.seq === +el.dataset.seq));
+  });
+}
+
+function stepHTML(e, k) {
+  const d = e.detail || {};
+  if (k === "task")
+    return `<div class="step task"><span class="time">${hhmmss(e.ts)}</span><span class="kind">task</span><span class="what">${esc(e.prompt)}</span></div>`;
+  if (k === "file")
+    return `<div class="step file"><span class="time">${hhmmss(e.ts)}</span><span class="kind">file ${esc(e.change)}</span><span class="what">${esc(e.path)}${e.size_delta ? ` (${e.size_delta > 0 ? "+" : ""}${e.size_delta} B)` : ""}</span></div>`;
+
+  let what, cls = "bash", kind = (e.tool || "tool").toLowerCase();
+  if (e.tool === "Bash") { what = (d.command || "").replace(/\n/g, " ⏎ "); if (d.is_git) cls = "git"; kind = d.is_git ? "git" : "bash"; }
+  else if (["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(e.tool)) { what = d.file_path; cls = "file"; }
+  else if (["WebFetch", "WebSearch"].includes(e.tool)) what = d.url || d.query;
+  else what = d.file_path || d.pattern || "";
+  const blocked = e.blocked ? ` <span class="blocked">[blocked: ${esc(e.blocked)}]</span>` : "";
+  return `<div class="step ${cls}"><span class="time">${hhmmss(e.ts)}</span><span class="kind">${esc(kind)}</span><span class="what">${esc(what)}${blocked}</span></div>`;
+}
+
+function reqHTML(e) {
+  const tags = [];
+  if (e.findings) tags.push(`<span class="tag leak">leak? ${esc(e.findings.map(f => f.kind).join(", "))}</span>`);
+  if (e.flood) tags.push(`<span class="tag flood">flood</span>`);
+  if (e.blocked) tags.push(`<span class="tag blocked">blocked</span>`);
+  if (e.mode === "transparent") tags.push(`<span class="tag bypass">bypassed proxy</span>`);
+  const w = e.req_body_len ? Math.min(60, 6 + Math.log2(e.req_body_len) * 4) : 0;
+  const bar = w ? `<span class="bar" style="width:${w.toFixed(0)}px" title="${e.req_body_len} B sent"></span>` : "";
+  return `<div class="req" data-seq="${e.seq}">
+    <span class="time">${hhmmss(e.ts)}</span>
+    <span class="m">${esc(e.method)}</span>
+    <span class="host">${esc(e.host)}</span>
+    <span class="path">${esc((e.path || "").slice(0, 120))}</span>
+    ${bar}${tags.join("")}</div>`;
+}
+
+/* ---------- detail drawer ---------- */
+
+function openDrawer(e) {
+  if (!e) return;
+  $("d-title").textContent = `${e.method} ${e.host}`;
+  const rows = [
+    ["time", new Date(e.ts * 1000).toLocaleTimeString()],
+    ["url", e.url],
+    ["how it left", e.mode === "transparent" ? "around the env proxy (transparent redirect)" : "via the env proxy"],
+    ["client", e.client],
+    ["user-agent", e.user_agent],
+    ["body sent", kb(e.req_body_len || 0)],
+  ];
+  if (e.findings) rows.push(["findings", e.findings.map(f => `${f.kind}: ${f.sample}`).join("\n")]);
+  if (e.blocked) rows.push(["blocked", "not on the allowlist"]);
+  if (e.flood) rows.push(["flood", "part of a burst against this domain"]);
+  $("d-meta").innerHTML = rows.filter(r => r[1])
+    .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  $("d-body").innerHTML = e.req_body_preview
+    ? `<h2>request body (first ${e.req_body_preview.length} chars)</h2><pre>${esc(e.req_body_preview)}</pre>`
+    : `<p class="note">No body stored. Either the request had none, or the host is in MITM_QUIET_HOSTS, where bodies are scanned but never written to disk.</p>`;
+  $("drawer").setAttribute("open", "");
+}
+function closeDrawer() { $("drawer").removeAttribute("open"); }
+
+/* ---------- controls ---------- */
+
+$("window").onchange = e => { state.windowSec = +e.target.value; render(); };
+$("filter").oninput = e => { state.filter = e.target.value.trim().toLowerCase(); render(); };
+$("hide-infra").onclick = e => {
+  state.hideInfra = !state.hideInfra;
+  e.target.setAttribute("aria-pressed", state.hideInfra);
+  render();
+};
+$("only-alerts").onclick = e => {
+  state.alertsOnly = !state.alertsOnly;
+  e.target.setAttribute("aria-pressed", state.alertsOnly);
+  render();
+};
+$("pause").onclick = e => {
+  state.paused = !state.paused;
+  e.target.setAttribute("aria-pressed", state.paused);
+  e.target.textContent = state.paused ? "resume" : "pause";
+};
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+window.addEventListener("resize", () => renderStrip(visible()));
+
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

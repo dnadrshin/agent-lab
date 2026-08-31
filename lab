@@ -16,7 +16,8 @@ Usage: ./lab <command>
   claude [args]  run the agent inside the sandbox
   shell          shell in the agent container (as agent, not root)
   root-shell     shell as root — bypasses the isolation, debugging only
-  watch          live timeline: agent steps × its network
+  viewer         browser view of the logs on http://127.0.0.1:8083
+  watch          live timeline in the terminal: agent steps × its network
   timeline [..]  one-shot timeline (arguments are passed to correlate.py)
   summary        outbound traffic aggregated by domain
   alerts         leaks, floods and blocks only
@@ -37,6 +38,7 @@ case "$cmd" in
   shell)      as_agent bash -l ;;
   root-shell) echo "WARNING: root inside the container bypasses traffic interception." >&2
               docker compose exec -u root agent bash -l ;;
+  viewer)     python3 tools/serve.py "$@" ;;
   watch)      python3 tools/correlate.py -f "$@" ;;
   timeline)   python3 tools/correlate.py "$@" ;;
   summary)    python3 tools/correlate.py --summary "$@" ;;
